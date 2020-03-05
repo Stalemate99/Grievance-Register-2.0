@@ -2,11 +2,18 @@ const mongoose = require('mongoose')
 const Schema = mongoose.Schema
 
 const complaintSchema = new Schema({
-    pic : String,
+    pic : { data: Buffer, contentType: String },
     sum : String,
+    time : {
+        type:String
+    },
     loc : {
         lat : Number,
         long : Number
+    },
+    typeOf:{
+        type:String,
+        enum:["overflowing sewers","patchy roads","overflowing garbage","open manholes"]
     },
     auth : Schema.Types.ObjectId,
     worker : Schema.Types.ObjectId,
@@ -37,14 +44,39 @@ const userSchema = new Schema({
         required : true,
         unique: true
     },
-    type:{
-        type:String,
-        enum:["worker","citizen"]
+    points:{
+        type:Number,
+        required:true
     },
     complaints : [Schema.Types.ObjectId]
 })
 
 const User = mongoose.model('User',userSchema)
+
+//Worker Schema 
+
+const workerSchema = new Schema({
+    name: {
+        type:String,
+        required:true
+    },
+    pno:{
+        type:String,
+        unique:true
+    },
+    pass:{
+        type:String,
+        required:true
+    },
+    complaint: Schema.Types.ObjectId,
+    auth : Schema.Types.ObjectId,
+    status : {
+        type:String,
+        enum:["working","free"]
+    }
+})
+
+const Worker = mongoose.model("Worker",workerSchema)
 
 const authSchema = new Schema({
     name : {
@@ -62,7 +94,10 @@ const authSchema = new Schema({
         required:true,
         unique:true
     },
-    type : String,
+    type : {
+        type:String,
+        enum:["CMWSSB","SWM","PWD","Road"]
+    },
     loc : {
         lat : Number,
         long : Number
@@ -76,5 +111,6 @@ const Auth = mongoose.model('Auth',authSchema)
 module.exports = {
     User : User,
     Auth : Auth,
-    Complaint : Complaint
+    Complaint : Complaint,
+    Worker : Worker
 }
