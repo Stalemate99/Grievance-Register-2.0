@@ -76,7 +76,98 @@ function registerWorker(name,pno,pass,auth){
     })
 }
 
-//Validation of user/worker
+
+
+//Adding Complaint
+async function addComplaint(pno,sum,loc,auth,time){
+    let curpath = path.join(__dirname,"/asset/appImage/Complaint.jpg");
+    console.log("Complaint From User :: ")
+    //Finding User
+    let updUser = await User.findOne({pno})
+    console.log(updUser);
+    //Registering complaint
+    console.log("Complaint Auth ID :: ",mongoose.Types.ObjectId(auth));
+    let complaint = new Complaint({
+        pic : {
+        data : fs.readFileSync(curpath),
+        contentType : 'image/jpg'
+        },
+        sum,
+        time, 
+        loc,
+        auth, 
+        status:"not taken",
+        vote: 1
+    })
+    complaint.users.push(updUser._id)
+    await complaint.save().then(()=>{
+        console.log("Added Complaint.")
+    }).catch(err=>{
+        console.log("Complaint Addition Error :: ",err)
+    })
+    //Updating Auth complaints
+    let updAuth = await Auth.findOne({"_id" : auth})
+    let authComplaints = updAuth.complaints||[]
+    authComplaints.push(complaint._id)
+    await Auth.findOneAndUpdate({"_id":auth},{"complaints":authComplaints})
+    await updAuth.save().then(()=>{
+        console.log("Auth updated")
+    }).catch(err=>{
+        console.log("Auth DB updation Error :: ",err)
+    })
+    //Updating User complaint list
+    console.log("After addition",updUser);
+    let newComplaintLog = updUser.complaints|| []
+    newComplaintLog.push(complaint._id)
+    await User.findOneAndUpdate({"_id":updUser._id},{ "complaints" : newComplaintLog})
+    await User.findOneAndUpdate({"_id":updUser._id},{ "points" : updUser.points++})
+    await updUser.save().then(() => {
+            console.log("User DB Updated.")
+            return null
+        })
+        .catch(err => {
+            console.log("User Complaint DB Updation :: ",err)
+        })
+    console.log("Updated User and Complaint :: ",updUser.name)
+}
+
+
+//APP RELATED
+
+//Registration of user
+app.post('/regUser',async (req,res)=>{
+    console.log("REGUSER :: BODY :: ",req.body)
+    let {name ,pno , pass} = req.body
+    await registerUser(name, pno, pass)
+    res.send("Registration Complete.")
+})
+
+//Register Authority
+app.post('/regAuth',async (req,res)=>{
+    console.log("REGAUTH :: BODY :: ",req.body)
+    let {name, mail, pass, type, lat, long} = req.body
+    let loc={lat,long}
+    await registerAuth(name,mail,pass,type,loc)
+    res.send("Authority has been registered successfully.")
+})
+
+//Register Worker
+app.post('/regWorker',async (req,res)=>{
+    console.log("REGISTER WORKER :: ",req.body)
+    let {name, pno, pass} = req.body
+    // await registerWorker(name, pno, pass, auth)
+    const newWorker = await new Worker({name,pno,pass,status:"free"})
+    newWorker.save().then(()=>{
+        console.log("Worker successfully added!");
+    }).catch(err=>{
+        console.log("Registeration Worker Error :: ",err);
+    })
+    res.send({
+        status: "deprecated/using route"
+    })
+})
+
+//Validation of user/worker/auth
 app.get('/login',async (req,res)=>{
     console.log(req.query)
     let {pno, pass} = req.query
@@ -113,61 +204,29 @@ app.get('/login',async (req,res)=>{
         else{
             res.send("Wrong Password.")
         }
+    }
+    console.log("After Worker check :: ",isUser)
+    obj = await Auth.findOne({mail})
+    if(obj){
+        if(pass === obj.pass){
+            res.send({
+                name: obj.name,
+                type: obj.type,
+                workers : obj.workers,
+                complaints : obj.complaints
+            })
+        }else{
+            res.send("Wrong Password!")
+        }
     }else{
-        res.send("Doesn't Exist!")
+        res.send("Invalid Data.")
     }
 })
 
-//Adding Complaint
-async function addComplaint(pno,sum,loc,auth){
-    
-    let curpath = path.join(__dirname,"/asset/appImage/Complaint.jpg");
-    console.log("Complaint From User :: ")
-    //Finding User
-    let updUser = await User.findOne({pno})
-    console.log(updUser);
-    //Registering complaint
-    console.log("Complaint Auth ID :: ",mongoose.Types.ObjectId(auth));
-    let complaint = new Complaint({pic : {
-        data : fs.readFileSync(curpath),
-        contentType : 'image/jpg'
-    },sum, loc, auth, status:"not taken",vote: 1})
-    complaint.users.push(updUser._id)
-    await complaint.save().then(()=>{
-        console.log("Added Complaint.")
-    }).catch(err=>{
-        console.log("Complaint Addition Error :: ",err)
-    })
-    //Updating Auth complaints
-    let updAuth = await Auth.findOne({_id : auth})
-    let authComplaints = updAuth.complaints||[]
-    authComplaints.push(complaint._id)
-    await Auth.findOneAndUpdate({"_id":auth},{"complaints":authComplaints})
-    await updAuth.save().then(()=>{
-        console.log("Auth updated")
-    }).catch(err=>{
-        console.log("Auth DB updation Error :: ",err)
-    })
-    //Updating User complaint list
-    console.log("After addition",updUser);
-    let newComplaintLog = updUser.complaints|| []
-    newComplaintLog.push(complaint._id)
-    await User.findOneAndUpdate({"_id":updUser._id},{ "complaints" : newComplaintLog})
-    await User.findOneAndUpdate({"_id":updUser._id},{ "points" : updUser.points++})
-    await updUser.save().then(() => {
-            console.log("User DB Updated.")
-            return null
-        })
-        .catch(err => {
-            console.log("User Complaint DB Updation :: ",err)
-        })
-    console.log("Updated User and Complaint :: ",updUser.name)
-}
-
-
-//APP RELATED
+//Complaint from user
 
 //Location Check Complaint 
+//NEEDS SOME WORK! LAT LONG NOT MATCHING....
 async function checkComplaint(loc){
     let complaints = await Complaint.findOne({"lat":loc.lat,"long":loc.lang})
     let newComplaints = []
@@ -182,15 +241,16 @@ async function checkComplaint(loc){
     return newComplaints
 }
 
-//Registration of user
-app.post('/regUser',async (req,res)=>{
-    console.log("REGUSER :: BODY :: ",req.body)
-    let {name ,pno , pass} = req.body
-    await registerUser(name, pno, pass)
-    res.send("Registration Complete.")
+//Sending Local list of complaints
+app.get('/complaint/loc', async (req,res)=>{
+    console.log("COMPLAINT LIST :: ",req.query)
+    let {lat,long} = req.query
+    let result = await checkComplaint({lat,long})
+    res.send({
+        status:200,
+        result
+    })
 })
-
-//Complaint from user
 
 //Getting Image via multer
 const upload_image = multer.diskStorage({
@@ -206,22 +266,10 @@ const uploadImage = multer({
     storage:upload_image,
 })
 
-//Sending Local list of complaints
-
-app.get('/complaint', async (req,res)=>{
-    console.log("COMPLAINT LIST :: ",req.query)
-    let {lat,long} = req.query
-    let result = await checkComplaint({lat,long})
-    res.send({
-        status:200,
-        result
-    })
-})
-
-app.post('/complaint',uploadImage.single("image"),async (req,res)=>{
+app.post('/complaint/user',uploadImage.single("image"),async (req,res)=>{
     console.log("COMPLAINT :: BODY :: ",req.body,"/n New Stuff",req)
     let curpath = path.join(__dirname,"/asset/appImage/Complaint.jpg");
-    let {pno, sum, lat, long} = req.body
+    let {pno, sum, lat, long, time} = req.body
     let loc ={lat,long}
     //To be sent to flask
     let formData = {
@@ -252,8 +300,9 @@ app.post('/complaint',uploadImage.single("image"),async (req,res)=>{
              status: 400,
              message:"Complaint not identified"
          })
+    //FUTURE PLAN :: MAKE IT SO THAT THEY CAN CONFIRM THE AUTHORITY...     
     console.log("Required Auth Type :: ",authType);
-    let posAuths = await Auth.find({type:authType})
+    let posAuths = await Auth.find({"type":authType})
     console.log("In get auth :: ",posAuths);
     let minDistance = {
         dist : 100000,
@@ -271,11 +320,11 @@ app.post('/complaint',uploadImage.single("image"),async (req,res)=>{
             }
         }
     })
-    sleep(2000)
+    await sleep(2000)
     let reqAuth = minDistance.authid
     console.log("Distance Method : ",minDistance.authid);
     console.log("Required Auth :: ",reqAuth);
-    await addComplaint(pno,sum,loc,reqAuth) 
+    await addComplaint(pno,sum,loc,reqAuth,time) 
     //increse user points
     res.send({
         status:200,
@@ -290,12 +339,14 @@ app.post('/vote',async (req,res)=>{
     //Update Database of Complaint and Auth 
     let complaint = await Complaint.findOne({_id:id})
     complaint.vote++
+    let {lat,long} = complaint.loc
     complaint.save().then(()=>{
         console.log("Increased vote in complaint DB")
     }).catch(err=>{
         console.log("Error in Complaint Vote Increase :: ",err)
     })
     //Inform auth via Socket.io
+    io.emit("Vote",id)
     //After updation
     res.send({
         status:200,
@@ -304,7 +355,7 @@ app.post('/vote',async (req,res)=>{
 })
 
 //Get complaints using phone-number
-app.get('/myComplaints',async (req,res)=>{
+app.get('/complaint',async (req,res)=>{
     console.log("MY COMPLAINTS :: ",req.body)
     let {pno} = req.body
     let result = await User.findOne({pno})
@@ -359,23 +410,7 @@ app.get('/status',async (req,res)=>{
     })
 })
 
-//Worker
 
-//Register Worker
-app.post('/regWorker',async (req,res)=>{
-    console.log("REGISTER WORKER :: ",req.body)
-    let {name, pno, pass} = req.body
-    // await registerWorker(name, pno, pass, auth)
-    const newWorker = await new Worker({name,pno,pass,status:"free"})
-    newWorker.save().then(()=>{
-        console.log("Worker successfully added!");
-    }).catch(err=>{
-        console.log("Registeration Worker Error :: ",err);
-    })
-    res.send({
-        status: "deprecated/using route"
-    })
-})
 
 //Worker Completion Updation
 app.post('/complete',async (res,req)=>{
@@ -394,14 +429,7 @@ app.post('/complete',async (res,req)=>{
 
 //WEB INTERFACE OF AUTHORITY
 
-//Register Authority
-app.post('/regAuth',async (req,res)=>{
-    console.log("REGAUTH :: BODY :: ",req.body)
-    let {name, mail, pass, type, lat, long} = req.body
-    let loc={lat,long}
-    await registerAuth(name,mail,pass,type,loc)
-    res.send("Authority has been registered successfully.")
-})
+
 
 //Add worker to auth
 app.post('/setWorker',async (req,res)=>{
